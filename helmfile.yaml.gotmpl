@@ -1,0 +1,202 @@
+---
+environments:
+  default:
+    values:
+      - ccAdminPassword: 401359d776cf916add90e52ac710daca
+      - dbPassword: d2281e96b43ba5bf0bb860d899a25dde
+      - oauthClientsSecret: 788bced02e5291001cfe64293147401b
+      - uaaAdminSecret: c34528e4888e603e565fb4ecf96e7ef4ff
+      - diegoSSHCredentials: ecefd064f8edba03bfa9383ed6ef4301
+      - sshProxyHostKeyFingerprint: 42:9c:68:fd:db:ff:22:cc:78:3c:80:f3:ce:46:ee:48
+      - blobstorePassword: 0ccf80293fac2a03d2ad5133c125521d
+      - cflinuxfs4Image: ghcr.io/cloudfoundry/k8s/cflinuxfs4:1.304.0
+      - k8sRepVersion: 0.2.2
+      - policyAgentVersion: 0.1.0
+      - loggregator:
+          enabled: true
+      - policyServer:
+          enabled: false
+---
+releases:
+  - name: uaa
+    chart: ./releases/uaa/helm
+    namespace: default
+    set:
+      - name: ccAdminPassword
+        value: {{ .Values | get "ccAdminPassword" }}
+      - name: dbPassword
+        value: {{ .Values | get "dbPassword" }}
+      - name: oauthClientsSecret
+        value: {{ .Values | get "oauthClientsSecret" }}
+      - name: uaaAdminSecret
+        value: {{ .Values | get "uaaAdminSecret" }}
+  - name: loggregator-agent
+    chart: ./releases/loggregator-agent/helm
+    namespace: default
+    set:
+      - name: syslogBindingCache.enabled
+        value: true
+      - name: forwarderAgent.enabled
+        value: true
+  - name: loggregator
+    chart: ./releases/loggregator/helm
+    condition: loggregator.enabled
+    namespace: default
+    set:
+      - name: oauthClientsSecret
+        value: {{ .Values | get "oauthClientsSecret" }}
+      - name: forwarderAgent.enabled
+        value: true
+  - name: routing
+    chart: ./releases/routing/helm
+    namespace: default
+    needs:
+      - loggregator-agent
+  - name: locket
+    chart: ./releases/diego/helm
+    namespace: default
+    needs:
+      - loggregator-agent
+    set:
+      - name: dbPassword
+        value: {{ .Values | get "dbPassword" }}
+      - name: oauthClientsSecret
+        value: {{ .Values | get "oauthClientsSecret" }}
+      - name: locket.enabled
+        value: true
+  - name: diego
+    chart: ./releases/diego/helm
+    namespace: default
+    needs:
+      - loggregator-agent
+    set:
+      - name: dbPassword
+        value: {{ .Values | get "dbPassword" }}
+      - name: diegoSSHCredentials
+        value: {{ .Values | get "diegoSSHCredentials" }}
+      - name: oauthClientsSecret
+        value: {{ .Values | get "oauthClientsSecret" }}
+      - name: sshProxyHostKey
+        file: ./temp/certs/ssh_key
+      - name: auctioneer.enabled
+        value: true
+      - name: bbs.enabled
+        value: true
+      - name: fileserver.enabled
+        value: true
+      - name: sshProxy.enabled
+        value: true
+  - name: log-cache
+    chart: ./releases/log-cache/helm
+    namespace: default
+    needs:
+      - uaa
+  - name: credhub
+    chart: ./releases/credhub/helm
+    namespace: default
+    needs:
+      - uaa
+    set:
+      - name: dbPassword
+        value: {{ .Values | get "dbPassword" }}
+  - name: capi
+    chart: ./releases/capi/helm
+    namespace: default
+    needs:
+      - locket
+      - diego
+    set:
+      - name: cloudController.blobstore.password
+        value: {{ .Values | get "blobstorePassword" }}
+      - name: dbPassword
+        value: {{ .Values | get "dbPassword" }}
+      - name: oauthClientsSecret
+        value: {{ .Values | get "oauthClientsSecret" }}
+      - name: cloudController.sshProxyKeyFingerprint
+        value: {{ .Values | get "sshProxyHostKeyFingerprint" }}
+      - name: cloudController.enabled
+        value: true
+  - name: k8s-rep
+    chart: oci://ghcr.io/cloudfoundry/helm/k8s-rep
+    version: {{ .Values | get "k8sRepVersion" }}
+    namespace: default
+    needs:
+      - locket
+      - diego
+    set:
+      - name: caCertificate
+        file: ./temp/certs/ca.crt
+      - name: stacks.cflinuxfs4
+        value: {{ .Values | get "cflinuxfs4Image" }}
+  - name: tps-watcher
+    chart: ./releases/capi/helm
+    namespace: default
+    needs:
+      - locket
+      - diego
+    set:
+      - name: tpsWatcher.enabled
+        value: true
+  - name: route-emitter
+    chart: ./releases/diego/helm
+    namespace: default
+    needs:
+      - locket
+      - diego
+    set:
+      - name: routeEmitter.enabled
+        value: true
+      - name: routeEmitter.enableInternalEmitter
+        value: {{ .Values | get "policyServer.enabled" }}
+  - name: cf-networking
+    chart: ./releases/cf-networking/helm
+    namespace: default
+    needs:
+      - locket
+      - diego
+    set:
+      - name: policyServer.dbPassword
+        value: {{ .Values | get "dbPassword" }}
+      - name: policyServer.oauthClientsSecret
+        value: {{ .Values | get "oauthClientsSecret" }}
+      - name: policyServer.enabled
+        value: {{ .Values | get "policyServer.enabled" }}
+      - name: serviceDiscoveryController.enabled
+        value: {{ .Values | get "policyServer.enabled" }}
+      - name: boshDnsAdapter.enabled
+        value: {{ .Values | get "policyServer.enabled" }}
+  - name: policy-agent
+    chart: oci://ghcr.io/cloudfoundry/helm/policy-agent:{{ .Values | get "policyAgentVersion" }}
+    namespace: default
+    condition: policyServer.enabled
+    needs:
+      - cf-networking
+    hooks:
+      - events: ["postsync"]
+        command: "bash"
+        args:
+          - "-c"
+          - |
+            # Check if CoreDNS already has apps.internal configuration
+            if ! kubectl get configmap coredns -n kube-system -o jsonpath='{.data.Corefile}' | grep -q "apps.internal:53"; then
+              echo "Patching CoreDNS to forward apps.internal to bosh-dns"
+              
+              # Get bosh-dns service ClusterIP
+              BOSH_DNS_IP=$(kubectl get svc bosh-dns -n default -o jsonpath='{.spec.clusterIP}')
+              
+              # Get current Corefile content  
+              COREFILE=$(kubectl get configmap coredns -n kube-system -o jsonpath='{.data.Corefile}')
+              
+              # Create new Corefile with apps.internal forwarding
+              printf '%s\n\n%s' "apps.internal:53 {
+                errors
+                forward . ${BOSH_DNS_IP}
+              }" "$COREFILE" | kubectl create configmap coredns -n kube-system --from-file=Corefile=/dev/stdin --dry-run=client -o yaml | kubectl apply -f -
+              
+              # Restart CoreDNS deployment
+              kubectl rollout restart deployment coredns -n kube-system
+              
+              echo "CoreDNS patched successfully"
+            else
+              echo "CoreDNS already configured for apps.internal forwarding"
+            fi
