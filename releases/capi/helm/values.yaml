@@ -54,6 +54,8 @@ cloudController:
       endpoint:  http://blobstore.127-0-0-1.nip.io
       aws_access_key_id: admin
       aws_secret_access_key: ~
+      aws_signature_version: 2
+      path_style: true
   diego:
     fileServerUrl: https://file-server.127-0-0-1.nip.io
     ccUploaderUrl: http://cc-uploader.default.svc.cluster.local:9090
