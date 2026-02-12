@@ -33,6 +33,16 @@ nodes:
     hostPort: 443
   - containerPort: 31222
     hostPort: 2222
+  - containerPort: 18000
+    hostPort: 18000
+  - containerPort: 18001
+    hostPort: 18001
+  - containerPort: 18002
+    hostPort: 18002
+  - containerPort: 18003
+    hostPort: 18003
+  - containerPort: 18004
+    hostPort: 18004
 - role: worker
   labels:
     cloudfoundry.org/cell: "true"
