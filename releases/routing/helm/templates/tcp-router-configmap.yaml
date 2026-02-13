@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tcp-router-configmap
+data:
+  tcp-router.json: |-
+    {
+      "token_endpoint": "uaa.service.cf.internal",
+      "client_name": "tcp-router",
+      "client_secret": "/etc/ssl/certs/tcp-router/tls.key",
+      "port": 8443,
+      "skip_ssl_validation": false,
+      "ca_certs": "/etc/ssl/certs/tcp-router/ca.crt",
+      "routing_api": {
+        "uri": "https://routing-api.service.cf.internal",
+        "port": 3001,
+        "auth_disabled": false,
+        "client_cert_path": "/etc/ssl/certs/routing-api/tls.crt",
+        "ca_cert_path": "/etc/ssl/certs/routing-api/ca.crt",
+        "client_private_key_path": "/etc/ssl/certs/routing-api/tls.key"
+      },
+      "haproxy_pid_file": "/tmp/haproxy.pid",
+      "isolation_segments": [],
+      "reserved_system_component_ports": [2822, 2825, 3457, 3458, 3459, 3460, 3461, 8853, 9100, 14726, 14727, 14821, 14822, 14823, 14824, 14829, 14830, 14920, 14922, 15821, 17002, 53035, 53080],
+      "drain_wait": "20s",
+      "backend_tls": {
+        "enabled": true,
+        "ca_cert_path": "/etc/ssl/certs/tcp-router/ca.crt",
+        "client_cert_and_key_path": "/etc/ssl/certs/tcp-router/client_cert_and_key.pem"
+    }

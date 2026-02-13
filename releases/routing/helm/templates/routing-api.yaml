@@ -1,0 +1,74 @@
+{{ if .Values.routing-api.enabled }}
+---
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: routing-api
+  labels:
+    app: routing-api
+  annotations:
+    checksum/config: {{ include (print $.Template.BasePath "/routing-api-configmap.yaml") . | sha256sum }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: routing-api
+  template:
+    metadata:
+      labels:
+        app: routing-api
+    annotations:
+      checksum/config: {{ include (print $.Template.BasePath "/routing-api-configmap.yaml") . | sha256sum }}
+    spec:
+      shareProcessNamespace: true
+      containers:
+        - name: routing-api
+          image: {{ .Values.routing-api.image.repository }}:{{ default .Chart.AppVersion .Values.routing-api.image.tag }}
+          imagePullPolicy: {{ .Values.routing-api.image.imagePullPolicy }}
+          {{- if .Values.routing-api.resources }}
+          resources:
+            {{- toYaml .Values.routing-api.resources | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: routing-api
+              mountPath: /etc/ssl/certs/routing-api
+            - name: routing-api-config
+              mountPath: /routing-api
+        - env:
+          - name: POD_IP
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIP
+      volumes:
+        - name: routing-api
+          secret:
+            secretName: {{ default "routing-api" .Values.routing-api.certificateSecret }}
+        - name: routing-api-config
+          configMap:
+            name: routing-api-configmap
+---
+{{ if not .Values.routing-api.certificateSecret }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: routing-api
+spec:
+  secretName: routing-api
+  commonName: client
+  dnsNames:
+    - routing-api
+    - routing-api.{{ .Release.Namespace }}.svc
+    - routing-api.{{ .Release.Namespace }}.svc.cluster.local
+    - "{{ .Values.routing-api.hostname }}"
+  issuerRef:
+    name: ca-issuer
+    kind: ClusterIssuer
+  usages:
+    - key encipherment
+    - digital signature
+    - server auth
+    - client auth
+  privateKey:
+    rotationPolicy: Always
+{{end }}
+{{- end }}

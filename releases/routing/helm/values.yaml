@@ -16,3 +16,22 @@ udpForwarder:
     # renovate: dataSource=docker depName=loggregator-agent-release packageName=ghcr.io/cloudfoundry/k8s/udp-forwarder
     tag: "8.3.13"
     imagePullPolicy: IfNotPresent
+
+tcp-router:
+  enabled: true
+  certificateSecret: ""
+  backendTLS:
+    caCertPath: ~
+    clientCertAndKeyPath: ~
+  image:
+    repository: ghcr.io/cloudfoundry/k8s/tcp-router
+    tag: 
+    imagePullPolicy: IfNotPresent
+  haproxy:
+    image:
+      repository: haproxy
+      tag: "3.3.3-alpine"
+      imagePullPolicy: IfNotPresent
+    resources: ~
+  nodeSelector: ~
+  tolerations: ~

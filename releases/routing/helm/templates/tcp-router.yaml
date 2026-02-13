@@ -1,0 +1,93 @@
+{{ if .Values.tcp-router.enabled }}
+---
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: tcp-router
+  labels:
+    app: tcp-router
+  annotations:
+    checksum/config: {{ include (print $.Template.BasePath "/tcp-router-configmap.yaml") . | sha256sum }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tcp-router
+  template:
+    metadata:
+      labels:
+        app: tcp-router
+    annotations:
+      checksum/config: {{ include (print $.Template.BasePath "/tcp-router-configmap.yaml") . | sha256sum }}
+    spec:
+      shareProcessNamespace: true
+      containers:
+        - name: tcp-router
+          image: {{ .Values.tcp-router.image.repository }}:{{ default .Chart.AppVersion .Values.tcp-router.image.tag }}
+          imagePullPolicy: {{ .Values.tcp-router.image.imagePullPolicy }}
+          {{- if .Values.tcp-router.resources }}
+          resources:
+            {{- toYaml .Values.tcp-router.resources | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: tcp-router
+              mountPath: /etc/ssl/certs/tcp-router
+            - name: tcp-router-config
+              mountPath: /tcp-router
+            - name: tmp
+              mountPath: /tmp
+        - name: haproxy
+          image: haproxy:{{ .Values.tcp-router.haproxy.image.tag }}
+          imagePullPolicy: {{ .Values.tcp-router.haproxy.image.imagePullPolicy }}
+          {{- if .Values.tcp-router.haproxy.resources }}
+          resources:
+            {{- toYaml .Values.tcp-router.haproxy.resources | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: tcp-router
+              mountPath: /etc/ssl/certs/tcp-router
+            - name: tmp
+              mountPath: /tmp
+      {{- if .Values.tcp-router.nodeSelector }}
+      nodeSelector:
+        {{- toYaml .Values.tcp-router.nodeSelector | nindent 8 }}
+      {{- end }}
+      {{- if .Values.tcp-router.tolerations }}
+      tolerations:
+        {{- toYaml .Values.tcp-router.tolerations | nindent 8 }}
+      {{- end }}
+      volumes:
+        - name: tcp-router
+          secret:
+            secretName: {{ default "tcp-router" .Values.tcp-router.certificateSecret }}
+        - name: tcp-router-config
+          configMap:
+            name: tcp-router-configmap
+        - name: tmp
+          emptyDir: {}
+---
+{{ if not .Values.tcp-router.certificateSecret }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: tcp-router
+spec:
+  secretName: tcp-router
+  commonName: client
+  dnsNames:
+    - tcp-router
+    - tcp-router.{{ .Release.Namespace }}.svc
+    - tcp-router.{{ .Release.Namespace }}.svc.cluster.local
+    - "{{ .Values.tcp-router.hostname }}"
+  issuerRef:
+    name: ca-issuer
+    kind: ClusterIssuer
+  usages:
+    - key encipherment
+    - digital signature
+    - server auth
+    - client auth
+  privateKey:
+    rotationPolicy: Always
+{{end }}
+{{- end }}
