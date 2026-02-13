@@ -82,6 +82,14 @@ spec:
           volumeMounts:
             - name: route-emitter
               mountPath: /etc/ssl/certs/route-emitter
+            - name: bbs
+              mountPath: /etc/ssl/certs/bbs
+            - name: loggregator
+              mountPath: /etc/ssl/certs/loggregator
+            - name: locket
+              mountPath: /etc/ssl/certs/locket
+            - name: nats
+              mountPath: /etc/ssl/certs/nats
             - name: route-emitter-config
               mountPath: /route-emitter
             - name: tmp
@@ -96,6 +104,18 @@ spec:
         - name: route-emitter
           secret:
             secretName: {{ default "route-emitter" .Values.routeEmitter.certificateSecret }}
+        - name: bbs
+          secret:
+            secretName: {{ default "bbs" .Values.routeEmitter.bbsCertificateSecret }}
+        - name: locket
+          secret:
+            secretName: {{ default "locket" .Values.routeEmitter.locketCertificateSecret }}
+        - name: nats
+          secret:
+            secretName: {{ default "nats" .Values.routeEmitter.natsCertificateSecret }}
+        - name: loggregator
+          secret:
+            secretName: {{ default "loggregator" .Values.routeEmitter.loggregatorCertificateSecret }}
         - name: route-emitter-config
           configMap:
             name: route-emitter-configmap
