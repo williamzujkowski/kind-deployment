@@ -100,7 +100,7 @@ releases:
         args:
           - "-c"
           - |
-            kubectl apply --filename assets/gateway.yaml
+            sed 's/127-0-0-1\.nip\.io/{{ .Values.domain }}/g' assets/gateway.yaml | kubectl apply -f -
 
   - name: postgresql
     namespace: default

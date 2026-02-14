@@ -13,7 +13,26 @@ install:
 login:
 	@ . temp/secrets.sh; \
 	CF_DOMAIN=$${CF_DOMAIN:-127-0-0-1.nip.io}; \
-	cf login -a https://api.$$CF_DOMAIN -u ccadmin -p "$$CC_ADMIN_PASSWORD" --skip-ssl-validation
+	SKIP_SSL=""; \
+	if ! openssl verify -CAfile temp/certs/ca.crt temp/certs/ca.crt >/dev/null 2>&1 || \
+	   ! security find-certificate -c "mkcert" >/dev/null 2>&1 && \
+	   ! trust list 2>/dev/null | grep -q "mkcert"; then \
+	  SKIP_SSL="--skip-ssl-validation"; \
+	fi; \
+	cf login -a https://api.$$CF_DOMAIN -u ccadmin -p "$$CC_ADMIN_PASSWORD" $$SKIP_SSL
+
+trust-ca:
+	@ if [ ! -f temp/certs/ca.crt ]; then echo "Run 'make init' first"; exit 1; fi
+	@ echo "Installing CA certificate into system trust store..."
+	@ if command -v mkcert >/dev/null 2>&1; then \
+	  mkcert -install; \
+	elif [ -d /usr/local/share/ca-certificates ]; then \
+	  sudo cp temp/certs/ca.crt /usr/local/share/ca-certificates/cf-kind-ca.crt && sudo update-ca-certificates; \
+	elif command -v security >/dev/null 2>&1; then \
+	  sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain temp/certs/ca.crt; \
+	else \
+	  echo "Could not detect trust store. Manually add temp/certs/ca.crt to your system trust store."; \
+	fi
 
 create-kind:
 	@ ./scripts/create-kind.sh
@@ -69,4 +88,4 @@ clean:
 	@ rm -rf temp/
 	@ echo "Cleanup complete"
 
-.PHONY: install login create-kind delete-kind up down create-org bootstrap bootstrap-complete init status logs clean
+.PHONY: install login create-kind delete-kind up down create-org bootstrap bootstrap-complete init status logs clean trust-ca

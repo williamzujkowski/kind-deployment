@@ -58,8 +58,12 @@ kubectl taint nodes -l cloudfoundry.org/cell=true cloudfoundry.org/cell=true:NoS
 
 kubectl cluster-info
 
+CF_DOMAIN="${CF_DOMAIN:-127-0-0-1.nip.io}"
+# Escape dots for regex (e.g., 127-0-0-1.nip.io → 127-0-0-1\\.nip\\.io)
+CF_DOMAIN_REGEX=$(printf '%s' "$CF_DOMAIN" | sed 's/\./\\\\./g')
+
 corefile=$(kubectl -n kube-system get configmap coredns -o jsonpath='{.data.Corefile}' | sed '/kubernetes/i \
-    rewrite name regex (.*)\\.127-0-0-1\\.nip\\.io istio-gateway-istio.default.svc.cluster.local answer auto\
+    rewrite name regex (.*)\\.'$CF_DOMAIN_REGEX' istio-gateway-istio.default.svc.cluster.local answer auto\
 ')
 kubectl -n kube-system patch configmap coredns --type=json \
   -p="$(jq -n --arg cf "$corefile" '[{"op":"replace","path":"/data/Corefile","value":$cf}]')"

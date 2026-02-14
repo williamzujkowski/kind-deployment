@@ -12,9 +12,25 @@ mkdir -p temp/certs
 
 # Generate CA certificate only if it doesn't exist or force flag is set
 if [ ! -f temp/certs/ca.key ] || [ "$FORCE" = true ]; then
-  echo "Generating CA certificate..."
-  openssl genrsa -traditional -out temp/certs/ca.key 4096
-  openssl req -x509 -key temp/certs/ca.key -out temp/certs/ca.crt -days 365 -nodes -subj "/CN=ca/O=ca" > /dev/null 2>&1
+  if command -v mkcert >/dev/null 2>&1; then
+    echo "Generating locally-trusted CA via mkcert..."
+    CAROOT=$(mkcert -CAROOT)
+    # Ensure mkcert root CA exists
+    if [ ! -f "$CAROOT/rootCA.pem" ]; then
+      mkcert -install 2>/dev/null || true
+    fi
+    cp "$CAROOT/rootCA.pem" temp/certs/ca.crt
+    # Convert mkcert PKCS8 key to PKCS1 (traditional RSA) for CF component compatibility
+    openssl rsa -in "$CAROOT/rootCA-key.pem" -out temp/certs/ca.key -traditional 2>/dev/null
+    echo "  CA sourced from mkcert — TLS will be trusted by your OS/browsers"
+    echo "  (run 'mkcert -install' with sudo to add to system trust store)"
+  else
+    echo "Generating self-signed CA via openssl..."
+    openssl genrsa -traditional -out temp/certs/ca.key 4096
+    openssl req -x509 -key temp/certs/ca.key -out temp/certs/ca.crt -days 365 -nodes -subj "/CN=ca/O=ca" > /dev/null 2>&1
+    echo "  TIP: Install mkcert for locally-trusted TLS (no --skip-ssl-validation needed)"
+    echo "  See: https://github.com/FiloSottile/mkcert"
+  fi
 else
   echo "CA certificate already exists (use --force to regenerate)"
 fi
@@ -22,6 +38,7 @@ fi
 # Generate SSH key only if it doesn't exist or force flag is set
 if [ ! -f temp/certs/ssh_key ] || [ "$FORCE" = true ]; then
   echo "Generating SSH key..."
+  rm -f temp/certs/ssh_key temp/certs/ssh_key.pub
   ssh-keygen -t rsa -b 4096 -f temp/certs/ssh_key -N "" > /dev/null 2>&1
 else
   echo "SSH key already exists (use --force to regenerate)"
