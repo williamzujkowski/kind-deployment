@@ -1,0 +1,10 @@
+---
+applications:
+- name: worker-app
+  path: .
+  instances: 1
+  memory: 256M
+  disk_quota: 256M
+  no-route: true
+  health-check-type: process
+  command: node worker.js

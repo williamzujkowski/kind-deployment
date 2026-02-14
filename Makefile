@@ -36,4 +36,35 @@ up: create-kind init install
 
 down: delete-kind
 
-PHONY: install login create-kind delete-kind up down create-org bootstrap bootstrap-complete
+smoke:
+	@ chmod +x examples/smoke-test.sh
+	@ ./examples/smoke-test.sh
+
+verify:
+	@ echo "Verifying CF API is reachable..."
+	@ curl -sk --max-time 10 https://api.127-0-0-1.nip.io/v3/info | jq -r '.build' || { echo "FAIL: CF API not reachable"; exit 1; }
+	@ echo "Pushing hello-js for verification..."
+	@ cf push verify-hello-js -p examples/hello-js -m 1024M --random-route
+	@ echo "Verifying app is running..."
+	@ cf app verify-hello-js | grep "#0" | grep running
+	@ echo "Cleaning up..."
+	@ cf delete -f verify-hello-js
+	@ echo "Verification complete."
+
+status:
+	@ echo "=== KIND Cluster ==="
+	@ kind get clusters 2>/dev/null | grep cfk8s && echo "Cluster: cfk8s (exists)" || echo "Cluster: cfk8s (NOT FOUND)"
+	@ echo ""
+	@ echo "=== Node Status ==="
+	@ kubectl get nodes 2>/dev/null || echo "kubectl not connected"
+	@ echo ""
+	@ echo "=== CF API Health ==="
+	@ curl -sk --max-time 5 https://api.127-0-0-1.nip.io/v3/info | jq -r '"CF API build: " + .build' 2>/dev/null || echo "CF API: NOT REACHABLE"
+	@ echo ""
+	@ echo "=== Pod Summary ==="
+	@ kubectl get pods -A --no-headers 2>/dev/null | awk '{status[$$4]++} END {for (s in status) printf "  %-20s %d\n", s, status[s]}' || echo "Cannot retrieve pods"
+	@ echo ""
+	@ echo "=== Non-Running Pods ==="
+	@ kubectl get pods -A --no-headers 2>/dev/null | grep -v Running | grep -v Completed || echo "  All pods are Running or Completed"
+
+PHONY: install login create-kind delete-kind up down create-org bootstrap bootstrap-complete smoke verify status
